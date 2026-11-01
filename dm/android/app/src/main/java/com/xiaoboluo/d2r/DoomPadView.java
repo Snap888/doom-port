@@ -116,6 +116,7 @@ public class DoomPadView extends View {
     private void releaseAll() {
         for (Btn b : btns) if (b.pointer >= 0) { if (b.key != SETTINGS) DmActivity.nativePadKey(PAD_DEVICE, b.key, false); b.pointer = -1; }
         left.pointer = -1; left.x = left.y = 0; look.pointer = fireLook.pointer = -1; pendX = pendY = lookX = lookY = 0;
+        DmActivity.nativePadAxes(PAD_DEVICE, 0, 0, 0, 0, 0, 0, 0, 0);
     }
     private void openSettings() { if (getContext() instanceof DmActivity) ((DmActivity) getContext()).showDoomSettings(); }
 
