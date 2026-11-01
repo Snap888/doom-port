@@ -75,6 +75,15 @@ jobs:
             -exec cp -v {} work/jni/arm64-v8a/ \;
           test -s work/jni/arm64-v8a/libdm.so
 
+      - name: Inspect extracted APK libraries (reference only)
+        run: |
+          NDK_BIN="$ANDROID_HOME/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          python3 tools/inspect_apk_elf.py \
+            --readelf "$NDK_BIN/llvm-readelf" \
+            --reference vendor/decompiled-apk/arm64-v8a \
+            --build work/build-android \
+            --report work/logs/decompiled-elf-report.txt
+
       - name: Download and verify pinned Turnip driver
         run: |
           python3 tools/fetch_turnip.py --out work/driver-assets
