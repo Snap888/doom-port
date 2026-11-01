@@ -34,6 +34,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The legacy "tools" package was removed from Google's SDK repository.
+          # Install only platform-tools here; the next step installs pinned components.
+          packages: platform-tools
 
       - name: Install pinned Android SDK packages
         run: |
