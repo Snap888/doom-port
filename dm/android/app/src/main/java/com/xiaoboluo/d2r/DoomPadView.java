@@ -108,7 +108,7 @@ public class DoomPadView extends View {
     void setControlsEnabled(boolean enabled, boolean manual) {
         if (manual) manualControlsOverride = true;
         controlsEnabled = enabled;
-        if (enabled) controllerMode = false; // force the touch pad on, even with a physical controller connected
+        if (enabled && manual) controllerMode = false; // force the touch pad on, even with a physical controller connected
         releaseAll();
         invalidate();
     }
