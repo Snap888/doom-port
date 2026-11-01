@@ -28,6 +28,9 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.Gravity;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
@@ -53,6 +56,9 @@ import java.util.Locale;
 public class DmActivity extends Activity implements SurfaceHolder.Callback, DisplayManager.DisplayListener, InputManager.InputDeviceListener {
     static final boolean DOOM = "doom".equals(BuildConfig.DM_GAME);
     private DoomPadView doomPad;
+    private TextView padToggle;
+    private boolean padControlsEnabled = true;
+    private boolean padManualOverride;
     static native int nativeStart(String filesDir, String extDir, String romfsSrc, String lang);
     static native void nativeSurface(Object surface, int w, int h);
     static native void nativeRefresh(float hz);
@@ -686,6 +692,50 @@ public class DmActivity extends Activity implements SurfaceHolder.Callback, Disp
         if (!(driverGuardDone && driverStatusDone)) view.postDelayed(this, 1000);
     } };
 
+    // Floating override: unlike automatic controller detection, this switch always wins until the player changes it again.
+    private void addPadToggle() {
+        if (padToggle != null || gameFrame == null) return;
+        SharedPreferences p = getSharedPreferences("doom_controls", MODE_PRIVATE);
+        padManualOverride = p.getBoolean("pad_manual_override", false);
+        padControlsEnabled = p.getBoolean("pad_enabled", true);
+        doomPad.setControlsEnabled(padControlsEnabled, padManualOverride);
+
+        padToggle = new TextView(this);
+        padToggle.setTextSize(12);
+        padToggle.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        padToggle.setTextColor(Color.WHITE);
+        padToggle.setGravity(Gravity.CENTER);
+        padToggle.setPadding(14, 9, 14, 9);
+        padToggle.setMinWidth(76);
+        padToggle.setElevation(8 * getResources().getDisplayMetrics().density);
+        padToggle.setClickable(true);
+        padToggle.setFocusable(true);
+        padToggle.setOnClickListener(v -> {
+            padControlsEnabled = !padControlsEnabled;
+            padManualOverride = true;
+            getSharedPreferences("doom_controls", MODE_PRIVATE).edit()
+                .putBoolean("pad_manual_override", true).putBoolean("pad_enabled", padControlsEnabled).apply();
+            doomPad.setControlsEnabled(padControlsEnabled, true);
+            updatePadToggle();
+        });
+        float density = getResources().getDisplayMetrics().density;
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+        lp.setMargins(0, Math.round(12 * density), Math.round(12 * density), 0);
+        gameFrame.addView(padToggle, lp);
+        updatePadToggle();
+    }
+
+    private void updatePadToggle() {
+        if (padToggle == null) return;
+        padToggle.setText(padControlsEnabled ? "PAD ON" : "PAD OFF");
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(padControlsEnabled ? 0xdd286b45 : 0xdd8b3030);
+        bg.setCornerRadius(22 * getResources().getDisplayMetrics().density);
+        bg.setStroke(Math.max(1, Math.round(getResources().getDisplayMetrics().density)), 0x99ffffff);
+        padToggle.setBackground(bg);
+        padToggle.setContentDescription(padControlsEnabled ? "Disable on-screen controls" : "Enable on-screen controls");
+    }
+
     private void startHost() {
         if (bootFailure != 0) { showBootFailure(); return; }
         if (started || importing || !resumed || !ensureFileAccess()) return;
@@ -703,7 +753,7 @@ public class DmActivity extends Activity implements SurfaceHolder.Callback, Disp
             catch (UnsatisfiedLinkError error) { showStartError(getString(R.string.dmAndroidLibrary)); return; }
             nativeContext(getApplicationContext());
         }
-        if (DOOM && doomPad == null) { doomPad = new DoomPadView(this); gameFrame.addView(doomPad, new FrameLayout.LayoutParams(-1, -1)); updatePadVisibility(); }   // [DOOM] on-screen controller
+        if (DOOM && doomPad == null) { doomPad = new DoomPadView(this); gameFrame.addView(doomPad, new FrameLayout.LayoutParams(-1, -1)); updatePadVisibility(); addPadToggle(); }   // [DOOM] on-screen controller + floating override
         if (touchOverlay == null && !DOOM) {   // [DOOM] the D2R touch layout does not apply; a DOOM layout comes later
             int[] gameIds = {R.string.dmAndroidAttack, R.string.dmAndroidSkill1, R.string.dmAndroidSkill2, R.string.dmAndroidSkill3, R.string.dmAndroidSkill4,
                 R.string.dmAndroidPortal, R.string.dmAndroidPotion1, R.string.dmAndroidPotion2, R.string.dmAndroidPotion3, R.string.dmAndroidPotion4,
