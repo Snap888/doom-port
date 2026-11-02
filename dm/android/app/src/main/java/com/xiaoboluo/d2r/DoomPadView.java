@@ -84,6 +84,7 @@ public class DoomPadView extends View {
     // Control options from the gear dialog (DmActivity): move dead-zone compensation and look sensitivity.
     // A real controller is connected (DmActivity.updatePadVisibility): only the settings button stays; everything held is released.
     private boolean controllerMode;
+    private boolean controlsEnabled = true, manualControlsOverride;
     // Settings button look (gear dialog, doom_controls "gear_mode", players asked for it to be less in the way): normal, or faded (its
     // alpha scaled to "gear_alpha" % of the usual, a slider in the dialog, full while pressed, same spot). Applies in controllerMode too.
     // (A hidden mode, reopened from a notification or a three-finger tap, was dropped: MIUI / HyperOS take three fingers for their
@@ -103,15 +104,24 @@ public class DoomPadView extends View {
         c.drawText(t, x, y, text);
     }
     void setControllerMode(boolean on) {
-        if (on == controllerMode) return;
+        if (manualControlsOverride || on == controllerMode) return;
         controllerMode = on;
         if (on) releaseAll();
+        invalidate();
+    }
+    // A manual choice from the floating switch takes priority over automatic physical-controller detection.
+    void setControlsEnabled(boolean enabled, boolean manual) {
+        if (manual) manualControlsOverride = true;
+        controlsEnabled = enabled;
+        if (enabled && manual) controllerMode = false;
+        releaseAll();
         invalidate();
     }
     // Every held key up, stick centred, look stopped (the caller sends the zero axes when this pad drives the game).
     private void releaseAll() {
         for (Btn b : btns) if (b.pointer >= 0) { if (b.key != SETTINGS) DmActivity.nativePadKey(PAD_DEVICE, b.key, false); b.pointer = -1; }
         left.pointer = -1; left.x = left.y = 0; look.pointer = fireLook.pointer = -1; pendX = pendY = lookX = lookY = lookDx = lookDy = 0;
+        DmActivity.nativePadAxes(PAD_DEVICE, 0, 0, 0, 0, 0, 0, 0, 0);
     }
     private void openSettings() { if (getContext() instanceof DmActivity) ((DmActivity) getContext()).showDoomSettings(); }
 
@@ -193,6 +203,7 @@ public class DoomPadView extends View {
     }
 
     @Override public boolean onTouchEvent(MotionEvent e) {
+        if (!controlsEnabled) return false;
         int a = e.getActionMasked(), i = e.getActionIndex(), id = e.getPointerId(i);
         float x = e.getX(i), y = e.getY(i); long t = e.getEventTime();
         if (controllerMode) {   // a real controller drives the game: only the settings button, and no axes from this pad (they would
@@ -253,6 +264,7 @@ public class DoomPadView extends View {
         // tick every frame while a pending turn is being played out
         if (pendX != 0 || pendY != 0 || lookX != 0 || lookY != 0) { axes(); postInvalidateOnAnimation(); }
         drawFps(c);
+        if (!controlsEnabled) return;
         if (controllerMode) { for (Btn b : btns) if (b.key == SETTINGS) drawBtn(c, b); return; }
         drawStick(c, left);
         for (Btn b : btns) drawBtn(c, b);
