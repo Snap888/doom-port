@@ -24,6 +24,10 @@ import android.text.TextWatcher;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.InputDevice;
 import android.view.KeyEvent;
+import android.view.Gravity;
+import android.view.ViewConfiguration;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -53,6 +57,7 @@ import java.util.Locale;
 public class DmActivity extends Activity implements SurfaceHolder.Callback, DisplayManager.DisplayListener, InputManager.InputDeviceListener {
     static final boolean DOOM = "doom".equals(BuildConfig.DM_GAME);
     private DoomPadView doomPad;
+    private TextView controlsToggle;
     static native int nativeStart(String filesDir, String extDir, String romfsSrc, String lang);
     static native void nativeSurface(Object surface, int w, int h);
     static native void nativeRefresh(float hz);
@@ -727,6 +732,109 @@ public class DmActivity extends Activity implements SurfaceHolder.Callback, Disp
         if (!(driverGuardDone && driverStatusDone)) view.postDelayed(this, 1000);
     } };
 
+    // Floating on-screen-controls switch. Drag it anywhere; a tap toggles the touch pad.
+    private void addControlsToggle() {
+        if (controlsToggle != null || gameFrame == null || doomPad == null) return;
+        SharedPreferences prefs = getSharedPreferences("doom_controls", MODE_PRIVATE);
+        boolean enabled = prefs.getBoolean("pad_enabled", true);
+        boolean manual = prefs.getBoolean("pad_manual_override", false);
+        doomPad.setControlsEnabled(enabled, manual);
+
+        final float density = getResources().getDisplayMetrics().density;
+        final int margin = Math.round(12 * density);
+        controlsToggle = new TextView(this);
+        controlsToggle.setTextSize(12);
+        controlsToggle.setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD);
+        controlsToggle.setTextColor(Color.WHITE);
+        controlsToggle.setGravity(Gravity.CENTER);
+        controlsToggle.setPadding(Math.round(14 * density), Math.round(9 * density),
+            Math.round(14 * density), Math.round(9 * density));
+        controlsToggle.setMinWidth(Math.round(76 * density));
+        controlsToggle.setElevation(8 * density);
+        controlsToggle.setClickable(true);
+        controlsToggle.setFocusable(true);
+
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
+        boolean hasPosition = prefs.getBoolean("toggle_position_set", false);
+        lp.leftMargin = hasPosition ? Math.max(0, Math.round(prefs.getFloat("toggle_x_dp", 0) * density)) : 0;
+        lp.topMargin = hasPosition ? Math.max(0, Math.round(prefs.getFloat("toggle_y_dp", 0) * density)) : margin;
+        gameFrame.addView(controlsToggle, lp);
+        updateControlsToggle(enabled);
+
+        if (!hasPosition) controlsToggle.post(() -> {
+            if (controlsToggle == null || gameFrame == null) return;
+            FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) controlsToggle.getLayoutParams();
+            p.leftMargin = Math.max(0, (gameFrame.getWidth() - controlsToggle.getWidth()) / 2);
+            p.topMargin = margin;
+            controlsToggle.setLayoutParams(p);
+        });
+
+        controlsToggle.setOnTouchListener(new View.OnTouchListener() {
+            float downRawX, downRawY;
+            int startLeft, startTop;
+            boolean dragging;
+            final int slop = ViewConfiguration.get(DmActivity.this).getScaledTouchSlop();
+
+            private void moveTo(float rawX, float rawY) {
+                FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) controlsToggle.getLayoutParams();
+                int maxLeft = Math.max(0, gameFrame.getWidth() - controlsToggle.getWidth());
+                int maxTop = Math.max(0, gameFrame.getHeight() - controlsToggle.getHeight());
+                p.leftMargin = Math.max(0, Math.min(maxLeft, startLeft + Math.round(rawX - downRawX)));
+                p.topMargin = Math.max(0, Math.min(maxTop, startTop + Math.round(rawY - downRawY)));
+                controlsToggle.setLayoutParams(p);
+            }
+
+            private void savePosition() {
+                FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) controlsToggle.getLayoutParams();
+                prefs.edit().putBoolean("toggle_position_set", true)
+                    .putFloat("toggle_x_dp", p.leftMargin / density)
+                    .putFloat("toggle_y_dp", p.topMargin / density).apply();
+            }
+
+            @Override public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN: {
+                        FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) controlsToggle.getLayoutParams();
+                        downRawX = event.getRawX(); downRawY = event.getRawY();
+                        startLeft = p.leftMargin; startTop = p.topMargin; dragging = false;
+                        return true;
+                    }
+                    case MotionEvent.ACTION_MOVE: {
+                        float dx = event.getRawX() - downRawX, dy = event.getRawY() - downRawY;
+                        if (!dragging && dx * dx + dy * dy > slop * slop) dragging = true;
+                        if (dragging) moveTo(event.getRawX(), event.getRawY());
+                        return true;
+                    }
+                    case MotionEvent.ACTION_UP:
+                        if (dragging) savePosition();
+                        else {
+                            boolean next = !prefs.getBoolean("pad_enabled", true);
+                            prefs.edit().putBoolean("pad_manual_override", true).putBoolean("pad_enabled", next).apply();
+                            doomPad.setControlsEnabled(next, true);
+                            updateControlsToggle(next);
+                        }
+                        v.performClick();
+                        return true;
+                    case MotionEvent.ACTION_CANCEL:
+                        if (dragging) savePosition();
+                        return true;
+                }
+                return true;
+            }
+        });
+    }
+
+    private void updateControlsToggle(boolean enabled) {
+        if (controlsToggle == null) return;
+        controlsToggle.setText(enabled ? "PAD ON" : "PAD OFF");
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(enabled ? 0xdd286b45 : 0xdd8b3030);
+        bg.setCornerRadius(22 * getResources().getDisplayMetrics().density);
+        bg.setStroke(Math.max(1, Math.round(getResources().getDisplayMetrics().density)), 0x99ffffff);
+        controlsToggle.setBackground(bg);
+        controlsToggle.setContentDescription(enabled ? "Disable on-screen controls" : "Enable on-screen controls");
+    }
+
     private void startHost() {
         if (bootFailure != 0) { showBootFailure(); return; }
         if (started || importing || !resumed || !ensureFileAccess()) return;
@@ -745,6 +853,7 @@ public class DmActivity extends Activity implements SurfaceHolder.Callback, Disp
             nativeContext(getApplicationContext());
         }
         if (DOOM && doomPad == null) { doomPad = new DoomPadView(this); gameFrame.addView(doomPad, new FrameLayout.LayoutParams(-1, -1)); updatePadVisibility(); }   // [DOOM] on-screen controller
+        if (DOOM) addControlsToggle();
         if (touchOverlay == null && !DOOM) {   // [DOOM] the D2R touch layout does not apply; a DOOM layout comes later
             int[] gameIds = {R.string.dmAndroidAttack, R.string.dmAndroidSkill1, R.string.dmAndroidSkill2, R.string.dmAndroidSkill3, R.string.dmAndroidSkill4,
                 R.string.dmAndroidPortal, R.string.dmAndroidPotion1, R.string.dmAndroidPotion2, R.string.dmAndroidPotion3, R.string.dmAndroidPotion4,
