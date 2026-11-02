@@ -753,6 +753,12 @@ public class DmActivity extends Activity implements SurfaceHolder.Callback, Disp
         controlsToggle.setElevation(8 * density);
         controlsToggle.setClickable(true);
         controlsToggle.setFocusable(true);
+        controlsToggle.setOnClickListener(v -> {
+            boolean next = !prefs.getBoolean("pad_enabled", true);
+            prefs.edit().putBoolean("pad_manual_override", true).putBoolean("pad_enabled", next).apply();
+            doomPad.setControlsEnabled(next, true);
+            updateControlsToggle(next);
+        });
 
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
         boolean hasPosition = prefs.getBoolean("toggle_position_set", false);
@@ -807,13 +813,7 @@ public class DmActivity extends Activity implements SurfaceHolder.Callback, Disp
                     }
                     case MotionEvent.ACTION_UP:
                         if (dragging) savePosition();
-                        else {
-                            boolean next = !prefs.getBoolean("pad_enabled", true);
-                            prefs.edit().putBoolean("pad_manual_override", true).putBoolean("pad_enabled", next).apply();
-                            doomPad.setControlsEnabled(next, true);
-                            updateControlsToggle(next);
-                        }
-                        v.performClick();
+                        else v.performClick();
                         return true;
                     case MotionEvent.ACTION_CANCEL:
                         if (dragging) savePosition();
