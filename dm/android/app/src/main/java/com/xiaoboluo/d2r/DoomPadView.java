@@ -154,6 +154,8 @@ public class DoomPadView extends View implements FrontMenu.Pad {
 
     // A real controller is connected (DmActivity.updatePadVisibility): only the settings button stays; everything held is released.
     private boolean controllerMode;
+    private boolean controlsEnabled = true;
+    private boolean manualControlsOverride;
     private int gearMode = GEAR_NORMAL, gearAlpha = GEAR_ALPHA_DEFAULT;
     // Frame counter (gear dialog): fps, mean / max frame time and GPU time of the last 0.5 s, redrawn twice a second.
     private boolean showFps; private final float[] fstats = new float[4];
@@ -169,9 +171,17 @@ public class DoomPadView extends View implements FrontMenu.Pad {
         c.drawText(t, x, y, text);
     }
     void setControllerMode(boolean on) {
+        if (manualControlsOverride) return;
         if (on == controllerMode) return;
         controllerMode = on;
         if (on) releaseAll();
+        invalidate();
+    }
+    void setControlsEnabled(boolean enabled, boolean manual) {
+        controlsEnabled = enabled;
+        if (manual) manualControlsOverride = true;
+        if (!enabled) releaseAll();
+        else if (manual) controllerMode = false;
         invalidate();
     }
     boolean controllerMode() { return controllerMode; }
@@ -331,6 +341,7 @@ public class DoomPadView extends View implements FrontMenu.Pad {
     // ---- touches
     private int menuPtr = -1; private boolean menuMoved; private float menuX0, menuY0, menuGX, menuGY;
     @Override public boolean onTouchEvent(MotionEvent e) {
+        if (!controlsEnabled) return false;
         ensureBuilt();
         if (edit) { editTouch(e); return true; }
         int a = e.getActionMasked(), i = e.getActionIndex(), id = e.getPointerId(i);
@@ -464,6 +475,7 @@ public class DoomPadView extends View implements FrontMenu.Pad {
         // tick every frame while a pending turn is being played out
         if (pendX != 0 || pendY != 0 || lookX != 0 || lookY != 0) { axes(); postInvalidateOnAnimation(); }
         if (!edit) drawFps(c);
+        if (!controlsEnabled) return;
         skin.select(skinPack, PadSkin.layoutFor(getWidth(), getHeight()));
         if (edit) c.drawColor(0x55000000);
         for (Ctl k : ctls) if (k.kind != K_MENU && (edit || visible(k))) drawCtl(c, k);
